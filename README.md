@@ -53,7 +53,8 @@ sudo python3 main.py
 ### Workflow:
 1. Training Phase
 - Collects normal traffic for ~5 minutes
-- Detection pPhase
+- Detection phase
+
 2. Monitors traffic in real time
 - Flags anomalies & suspicious behavior
 
