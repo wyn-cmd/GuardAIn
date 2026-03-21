@@ -1,16 +1,17 @@
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 
 import numpy as np
 from scapy.all import IP, TCP, UDP, sniff
 from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import StandardScaler
 
 # config
 
 interface = "enp2s0f0"  # Configure with which interface you want
 model_training_time = 300  # seconds
 packet_batchsize = 50
-
+scaler = StandardScaler()
 
 # Thresholds for anomaly / scan detection
 PORT_SCAN_THRESHOLD = 15  # no. of unique ports to trigger port scan alert
@@ -29,7 +30,7 @@ scan_tracker = defaultdict(
         "syn_packets": 0,
         "ack_packets": 0,
         "unique_ips": set(),
-        "timestamps": [],
+        "timestamps": deque(maxlen=50),  # sliding window
     }
 )
 
@@ -137,9 +138,9 @@ def train_model():
     print("[+] Training AI model on normal traffic...")
 
     X = np.array(training_data)
-
+    X_scaled = scaler.fit_transform(X)  # normalize features
     model = IsolationForest(contamination=0.01, random_state=42)
-    model.fit(X)
+    model.fit(X_scaled)
 
     print("[+] Model training complete.")
 
@@ -256,7 +257,8 @@ def process_packet(packet):
     if len(packet_buffer) >= packet_batchsize:
         # Get anomaly scores instead of just labels
         features_only = [f for (_, f) in packet_buffer]
-        scores = model.decision_function(features_only)
+        features_scaled = scaler.transform(features_only)  # scale features
+        scores = model.decision_function(features_scaled)
 
         for i, score in enumerate(scores):
             pkt, feats = packet_buffer[i]
