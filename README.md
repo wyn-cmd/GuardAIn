@@ -2,7 +2,7 @@
 A lightweight AI-powered IDS for Linux that analyses live network traffic using anomaly detection &amp; behavioral rules to identify suspicious activity in real time.
 
 
-Features
+## Features
 - **AI-Based Detection**
   - Uses an Isolation Forest model to learn normal traffic behavior
   - Detects anomalies in real time
