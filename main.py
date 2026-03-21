@@ -12,6 +12,13 @@ model_training_time = 300  # seconds
 packet_batchsize = 50
 
 
+# Thresholds for anomaly / scan detection
+PORT_SCAN_THRESHOLD = 15  # no. of unique ports to trigger port scan alert
+SYN_SCAN_THRESHOLD = 20  # no. of SYN packets to trigger SYN scan alert
+ACK_THRESHOLD = 5  # no. of ACK packets considered “normal traffic”
+ANOMALY_THRESHOLD = -0.2  # Isolation Forest anomaly score threshold
+
+
 training_data = []
 model = None
 
@@ -57,36 +64,34 @@ def detect_scan(packet):
     tracker["timestamps"].append(now)
     tracker["unique_ips"].add(dst)
 
-    # Ignore normal established traffic (ACK-heavy flows)
-    if TCP in packet:
-        flags = packet[TCP].flags
-
-        # Skip packets that are just ACK or data transfer
-        if flags & 0x10 and not (flags & 0x02):
-            return False
-
     if TCP in packet:
         dport = packet[TCP].dport
         flags = packet[TCP].flags
 
+        # Skip ACK-only flows
+        if flags & 0x10 and not (flags & 0x02):
+            return False
+
         tracker["ports"].add(dport)
-
-        # SYN
-        if flags & 0x02 and not (flags & 0x10):
+        if flags & 0x02:
             tracker["syn_packets"] += 1
-
-        # ACK (normal traffic indicator)
         if flags & 0x10:
             tracker["ack_packets"] += 1
 
     # Detection logic
 
     # Real port scan: many ports, few ACKs
-    if len(tracker["ports"]) > 15 and tracker["ack_packets"] < 5:
+    if (
+        len(tracker["ports"]) > PORT_SCAN_THRESHOLD
+        and tracker["ack_packets"] < ACK_THRESHOLD
+    ):
         return "Likely port scan (many ports, low ACK)"
 
     # SYN scan
-    if tracker["syn_packets"] > 20 and tracker["ack_packets"] < 5:
+    if (
+        tracker["syn_packets"] > SYN_SCAN_THRESHOLD
+        and tracker["ack_packets"] < ACK_THRESHOLD
+    ):
         return "SYN scan detected"
 
     return False
@@ -121,7 +126,7 @@ def extract_features(packet):
                 port_type = 3  # high/random
 
             return [proto, port_type, length]
-    except:
+    except (AttributeError, IndexError):
         return None
 
 
@@ -255,7 +260,7 @@ def process_packet(packet):
         for i, score in enumerate(scores):
             pkt, feats = packet_buffer[i]
 
-            if score < -0.2:
+            if score < ANOMALY_THRESHOLD:
                 alert(pkt, feats, score)
 
         packet_buffer = []
