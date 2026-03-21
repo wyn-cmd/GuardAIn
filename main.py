@@ -14,9 +14,10 @@ packet_batchsize = 50
 
 # Thresholds for anomaly / scan detection
 PORT_SCAN_THRESHOLD = 15  # no. of unique ports to trigger port scan alert
-SYN_SCAN_THRESHOLD = 20  # no. of SYN packets to trigger SYN scan alert
+SYN_SCAN_THRESHOLD = 25  # no. of SYN packets to trigger SYN scan alert
 ACK_THRESHOLD = 5  # no. of ACK packets considered “normal traffic”
 ANOMALY_THRESHOLD = -0.2  # Isolation Forest anomaly score threshold
+HIGH_ANOMALY_THRESHOLD = -0.5  # Higher Isolation Forest anaomaly score threshold
 
 
 training_data = []
@@ -196,9 +197,9 @@ def alert(packet, features, score):
     # Basic reasoning
     print("\nAnalysis:")
 
-    if score < -0.5:
+    if score < HIGH_ANOMALY_THRESHOLD:
         print("   - Highly anomalous traffic pattern")
-    elif score < -0.2:
+    elif score < ANOMALY_THRESHOLD:
         print("   - Moderately anomalous")
     else:
         print("   - Slight deviation from baseline")
@@ -237,7 +238,7 @@ def process_packet(packet):
     scan_result = detect_scan(packet)
 
     if scan_result:
-        print(f"\n SCAN DETECTED: {scan_result}")
+        print(f"\n SCAN DETECTED: {scan_result}", flush=True)
         print(packet.summary())
 
     features = extract_features(packet)
