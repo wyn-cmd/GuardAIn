@@ -61,7 +61,8 @@ def detect_scan(packet):
     tracker = scan_tracker[src]
 
     # Keep last 10 seconds only
-    tracker["timestamps"] = [t for t in tracker["timestamps"] if now - t < 10]
+    while tracker["timestamps"] and now - tracker["timestamps"][0] > 10:
+        tracker["timestamps"].popleft()
 
     tracker["timestamps"].append(now)
     tracker["unique_ips"].add(dst)
