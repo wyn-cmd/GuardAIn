@@ -278,6 +278,7 @@ def main():
     sniff(
         iface=interface,
         prn=lambda p: training_data.append(extract_features(p)),
+        lfilter=lambda p: not is_noise(p),
         store=0,
         timeout=model_training_time,
     )
@@ -294,7 +295,7 @@ def main():
 
     print("[+] Entering detection mode...\n")
 
-    sniff(iface=interface, prn=process_packet, store=0)
+    sniff(iface=interface, prn=process_packet, lfilter=lambda p: not is_noise(p), store=0)
 
 
 if __name__ == "__main__":
