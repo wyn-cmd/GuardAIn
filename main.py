@@ -278,6 +278,7 @@ def main():
     sniff(
         iface=interface,
         prn=lambda p: training_data.append(extract_features(p)),
+        store=0,
         timeout=model_training_time,
     )
 
