@@ -1,5 +1,5 @@
 # GuardAIn
-A lightweight AI-powered IDS for Linux that analyses live network traffic using anomaly detection &amp; behavioral rules to identify suspicious activity in real time.
+A lightweight AI-powered IDS for Linux that analyses live network traffic using anomaly detection and behavioral rules to identify suspicious activity in real time.
 
 
 ## Features
@@ -31,9 +31,8 @@ A lightweight AI-powered IDS for Linux that analyses live network traffic using 
 - Python 3.8+
 - Linux (requires root privileges for packet sniffing)
 - Pip packages:
-  - collections
   - scapy
-  - sklearn
+  - scikit-learn
   - numpy
 
 ### Install dependencies:
@@ -51,11 +50,10 @@ sudo python3 main.py
 ```
 
 ### Workflow:
-1. Training Phase
+1. Training phase
   - Collects normal traffic for ~5 minutes
-  - Detection phase
-
-2. Monitors traffic in real time
-  - Flags anomalies & suspicious behavior
+2. Detection phase
+  - Monitors traffic in real time
+  - Flags anomalies or suspicious behavior
 
 
