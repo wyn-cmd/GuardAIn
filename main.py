@@ -1,3 +1,6 @@
+# GuardAIn main intrusion detection module
+# Author: personal project codebase
+
 import time
 from collections import defaultdict, deque
 
@@ -6,20 +9,18 @@ from scapy.all import IP, TCP, UDP, sniff
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
-# config
-
-interface = "enp2s0f0"  # Configure with which interface you want
-model_training_time = 300  # seconds
+# configuration options
+interface = "enp2s0f0"
+model_training_time = 300
 packet_batchsize = 50
 scaler = StandardScaler()
 
-# Thresholds for anomaly / scan detection
-PORT_SCAN_THRESHOLD = 15  # no. of unique ports to trigger port scan alert
-SYN_SCAN_THRESHOLD = 25  # no. of SYN packets to trigger SYN scan alert
-ACK_THRESHOLD = 5  # no. of ACK packets considered “normal traffic”
-ANOMALY_THRESHOLD = -0.2  # Isolation Forest anomaly score threshold
-HIGH_ANOMALY_THRESHOLD = -0.5  # Higher Isolation Forest anaomaly score threshold
-
+# detection thresholds for network scans and anomalies
+PORT_SCAN_THRESHOLD = 15
+SYN_SCAN_THRESHOLD = 25
+ACK_THRESHOLD = 5
+ANOMALY_THRESHOLD = -0.2
+HIGH_ANOMALY_THRESHOLD = -0.5
 
 training_data = []
 model = None
@@ -30,26 +31,23 @@ scan_tracker = defaultdict(
         "syn_packets": 0,
         "ack_packets": 0,
         "unique_ips": set(),
-        "timestamps": deque(maxlen=50),  # sliding window
+        "timestamps": deque(maxlen=50),
     }
 )
 
-
+# filter out broadcast, multicast, and noisy background protocols
 def is_noise(packet):
-    # Ignore multicast / IGMP
     if packet.haslayer("IGMP"):
         return True
 
     if IP in packet:
         dst = packet[IP].dst
-
-        # Multicast range
         if dst.startswith("224."):
             return True
 
     return False
 
-
+# stateful scan detection for port and SYN sweeps
 def detect_scan(packet):
     if IP not in packet:
         return False
@@ -60,7 +58,6 @@ def detect_scan(packet):
 
     tracker = scan_tracker[src]
 
-    # Keep last 10 seconds only
     while tracker["timestamps"] and now - tracker["timestamps"][0] > 10:
         tracker["timestamps"].popleft()
 
@@ -71,7 +68,6 @@ def detect_scan(packet):
         dport = packet[TCP].dport
         flags = packet[TCP].flags
 
-        # Skip ACK-only flows
         if flags & 0x10 and not (flags & 0x02):
             return False
 
@@ -81,16 +77,12 @@ def detect_scan(packet):
         if flags & 0x10:
             tracker["ack_packets"] += 1
 
-    # Detection logic
-
-    # Real port scan: many ports, few ACKs
     if (
         len(tracker["ports"]) > PORT_SCAN_THRESHOLD
         and tracker["ack_packets"] < ACK_THRESHOLD
     ):
         return "Likely port scan (many ports, low ACK)"
 
-    # SYN scan
     if (
         tracker["syn_packets"] > SYN_SCAN_THRESHOLD
         and tracker["ack_packets"] < ACK_THRESHOLD
@@ -99,56 +91,50 @@ def detect_scan(packet):
 
     return False
 
-
+# map raw packets into numerical feature arrays for the machine learning model
 def extract_features(packet):
     try:
-        if IP in packet:
-            ip = packet[IP]
+        if IP not in packet:
+            return None
 
-            proto = 0
-            if TCP in packet:
-                proto = 1
-            elif UDP in packet:
-                proto = 2
+        proto = 0
+        if TCP in packet:
+            proto = 1
+        elif UDP in packet:
+            proto = 2
 
-            length = len(packet)
+        length = len(packet)
 
-            # Normalize ports to reduce randomness
-            dport = 0
-            if TCP in packet:
-                dport = packet[TCP].dport
-            elif UDP in packet:
-                dport = packet[UDP].dport
+        dport = 0
+        if TCP in packet:
+            dport = packet[TCP].dport
+        elif UDP in packet:
+            dport = packet[UDP].dport
 
-            # Bucket ports
-            if dport in [80, 443]:
-                port_type = 1  # web
-            elif dport < 1024:
-                port_type = 2  # system
-            else:
-                port_type = 3  # high/random
+        if dport in [80, 443]:
+            port_type = 1
+        elif dport < 1024:
+            port_type = 2
+        else:
+            port_type = 3
 
-            return [proto, port_type, length]
+        return [proto, port_type, length]
     except (AttributeError, IndexError):
         return None
 
-
-# Train model
+# train the Isolation Forest model using the collected baseline data
 def train_model():
     global model
     print("[+] Training AI model on normal traffic...")
 
     X = np.array(training_data)
-    X_scaled = scaler.fit_transform(X)  # normalize features
+    X_scaled = scaler.fit_transform(X)
     model = IsolationForest(contamination=0.01, random_state=42)
     model.fit(X_scaled)
 
     print("[+] Model training complete.")
 
-
-# Alert System
-
-
+# format and log anomaly alerts to console and file
 def alert(packet, features, score):
     print("\n" + "=" * 60)
     print("! INTRUSION ALERT !")
@@ -160,19 +146,18 @@ def alert(packet, features, score):
 
     if packet and IP in packet:
         ip = packet[IP]
-        print(f"\nNetwork Info:")
+        print("\nNetwork Info:")
         print(f"   Source IP      : {ip.src}")
         print(f"   Destination IP : {ip.dst}")
         print(f"   Packet Length  : {len(packet)} bytes")
 
         if TCP in packet:
             tcp = packet[TCP]
-            print(f"\nProtocol: TCP")
+            print("\nProtocol: TCP")
             print(f"   Source Port    : {tcp.sport}")
             print(f"   Destination Port: {tcp.dport}")
             print(f"   Flags          : {tcp.flags}")
 
-            # Interpret flags
             flag_desc = []
             if tcp.flags & 0x02:
                 flag_desc.append("SYN")
@@ -189,14 +174,13 @@ def alert(packet, features, score):
 
         elif UDP in packet:
             udp = packet[UDP]
-            print(f"\nProtocol: UDP")
+            print("\nProtocol: UDP")
             print(f"   Source Port    : {udp.sport}")
             print(f"   Destination Port: {udp.dport}")
 
         else:
             print("\nProtocol: Other")
 
-    # Basic reasoning
     print("\nAnalysis:")
 
     if score < HIGH_ANOMALY_THRESHOLD:
@@ -222,18 +206,14 @@ def alert(packet, features, score):
 
     print("=" * 60 + "\n")
 
-    # Save to log
     with open("alerts.log", "a") as f:
         f.write(
             f"{time.ctime()} | Score: {score:.4f} | {packet.summary() if packet else 'N/A'}\n"
         )
 
-
-# Packet handler
-
 packet_buffer = []
 
-
+# process incoming packets during the live detection phase
 def process_packet(packet):
     global training_data, model, packet_buffer
 
@@ -247,18 +227,15 @@ def process_packet(packet):
     if features is None:
         return
 
-    # Training phase
     if model is None:
         training_data.append(features)
         return
 
-    # Detection phase
     packet_buffer.append((packet, features))
 
     if len(packet_buffer) >= packet_batchsize:
-        # Get anomaly scores instead of just labels
         features_only = [f for (_, f) in packet_buffer]
-        features_scaled = scaler.transform(features_only)  # scale features
+        features_scaled = scaler.transform(features_only)
         scores = model.decision_function(features_scaled)
 
         for i, score in enumerate(scores):
@@ -269,12 +246,10 @@ def process_packet(packet):
 
         packet_buffer = []
 
-
-# Main
+# main entry point to initialize sniffing and model training loops
 def main():
     print("[+] Starting packet capture...")
 
-    # Collect training data
     sniff(
         iface=interface,
         prn=lambda p: training_data.append(extract_features(p)),
@@ -283,7 +258,6 @@ def main():
         timeout=model_training_time,
     )
 
-    # Clean training data
     global training_data
     training_data = [x for x in training_data if x is not None]
 
@@ -296,7 +270,6 @@ def main():
     print("[+] Entering detection mode...\n")
 
     sniff(iface=interface, prn=process_packet, lfilter=lambda p: not is_noise(p), store=0)
-
 
 if __name__ == "__main__":
     main()
