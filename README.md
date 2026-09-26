@@ -57,3 +57,12 @@ sudo python3 main.py
   - Flags anomalies or suspicious behavior
 
 
+## Tests
+
+```bash
+python3 -m unittest discover tests
+```
+
+Eight tests covering the scan-detection sliding window (including a source going quiet and no longer being flagged from an old burst), feature extraction for TCP and UDP packets and for a packet with no IP layer at all, and the multicast noise filter. These exercise the pure functions directly with packets built in-process, not a live capture.
+
+

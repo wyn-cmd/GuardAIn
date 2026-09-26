@@ -64,6 +64,14 @@ def detect_scan(packet):
     while tracker["timestamps"] and now - tracker["timestamps"][0] > 10:
         tracker["timestamps"].popleft()
 
+    # Once the window has fully drained, this source has been quiet for the
+    # last 10 seconds: reset its counters instead of leaving a burst from
+    # long ago permanently flagging every packet it sends from now on.
+    if not tracker["timestamps"]:
+        tracker["ports"].clear()
+        tracker["syn_packets"] = 0
+        tracker["ack_packets"] = 0
+
     tracker["timestamps"].append(now)
     tracker["unique_ips"].add(dst)
 
