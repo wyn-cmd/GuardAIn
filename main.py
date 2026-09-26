@@ -2,7 +2,7 @@ import time
 from collections import defaultdict, deque
 
 import numpy as np
-from scapy.all import IP, TCP, UDP, sniff
+from scapy.all import IP, IPv6, TCP, UDP, sniff
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
@@ -45,6 +45,15 @@ def is_noise(packet):
 
         # Multicast range
         if dst.startswith("224."):
+            return True
+
+    if IPv6 in packet:
+        dst = packet[IPv6].dst
+
+        # IPv6 multicast range (ff00::/8): mDNS, router/neighbor discovery
+        # and similar routine chatter that every dual-stack host sends
+        # constantly, and which is just as much noise as IPv4 224.0.0.0/4.
+        if dst.lower().startswith("ff"):
             return True
 
     return False

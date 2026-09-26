@@ -4,7 +4,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scapy.all import IP, TCP, UDP, Ether  # noqa: E402
+from scapy.all import IP, IPv6, TCP, UDP, Ether  # noqa: E402
 import main  # noqa: E402
 
 
@@ -58,6 +58,14 @@ class NoiseFilterTests(unittest.TestCase):
 
     def test_a_regular_packet_is_not_noise(self):
         pkt = IP(src="1.2.3.4", dst="5.6.7.8") / TCP(dport=80, flags="S")
+        self.assertFalse(main.is_noise(pkt))
+
+    def test_ipv6_multicast_destination_is_noise(self):
+        pkt = IPv6(src="fe80::1", dst="ff02::fb") / UDP(dport=5353)
+        self.assertTrue(main.is_noise(pkt))
+
+    def test_ipv6_unicast_destination_is_not_noise(self):
+        pkt = IPv6(src="fe80::1", dst="2001:db8::1") / TCP(dport=443, flags="S")
         self.assertFalse(main.is_noise(pkt))
 
 
