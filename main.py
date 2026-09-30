@@ -16,9 +16,9 @@ scaler = StandardScaler()
 # Thresholds for anomaly / scan detection
 PORT_SCAN_THRESHOLD = 15  # no. of unique ports to trigger port scan alert
 SYN_SCAN_THRESHOLD = 25  # no. of SYN packets to trigger SYN scan alert
-ACK_THRESHOLD = 5  # no. of ACK packets considered “normal traffic”
+ACK_THRESHOLD = 5  # no. of ACK packets considered normal traffic
 ANOMALY_THRESHOLD = -0.2  # Isolation Forest anomaly score threshold
-HIGH_ANOMALY_THRESHOLD = -0.5  # Higher Isolation Forest anaomaly score threshold
+HIGH_ANOMALY_THRESHOLD = -0.5  # Higher Isolation Forest anomaly score threshold
 
 
 training_data = []
@@ -85,8 +85,11 @@ def detect_scan(packet):
     tracker["unique_ips"].add(dst)
 
     if TCP in packet:
-        dport = packet[TCP].dport
-        flags = packet[TCP].flags
+        try:
+            dport = packet[TCP].dport
+            flags = packet[TCP].flags
+        except (AttributeError, IndexError):
+            return False
 
         # Skip ACK-only flows
         if flags & 0x10 and not (flags & 0x02):
@@ -120,8 +123,6 @@ def detect_scan(packet):
 def extract_features(packet):
     try:
         if IP in packet:
-            ip = packet[IP]
-
             proto = 0
             if TCP in packet:
                 proto = 1
@@ -177,38 +178,44 @@ def alert(packet, features, score):
 
     if packet and IP in packet:
         ip = packet[IP]
-        print(f"\nNetwork Info:")
+        print("\nNetwork Info:")
         print(f"   Source IP      : {ip.src}")
         print(f"   Destination IP : {ip.dst}")
         print(f"   Packet Length  : {len(packet)} bytes")
 
         if TCP in packet:
-            tcp = packet[TCP]
-            print(f"\nProtocol: TCP")
-            print(f"   Source Port    : {tcp.sport}")
-            print(f"   Destination Port: {tcp.dport}")
-            print(f"   Flags          : {tcp.flags}")
+            try:
+                tcp = packet[TCP]
+                print("\nProtocol: TCP")
+                print(f"   Source Port    : {tcp.sport}")
+                print(f"   Destination Port: {tcp.dport}")
+                print(f"   Flags          : {tcp.flags}")
 
-            # Interpret flags
-            flag_desc = []
-            if tcp.flags & 0x02:
-                flag_desc.append("SYN")
-            if tcp.flags & 0x10:
-                flag_desc.append("ACK")
-            if tcp.flags & 0x01:
-                flag_desc.append("FIN")
-            if tcp.flags & 0x04:
-                flag_desc.append("RST")
+                # Interpret flags
+                flag_desc = []
+                if tcp.flags & 0x02:
+                    flag_desc.append("SYN")
+                if tcp.flags & 0x10:
+                    flag_desc.append("ACK")
+                if tcp.flags & 0x01:
+                    flag_desc.append("FIN")
+                if tcp.flags & 0x04:
+                    flag_desc.append("RST")
 
-            print(
-                f"   Flag Meaning   : {', '.join(flag_desc) if flag_desc else 'None'}"
-            )
+                print(
+                    f"   Flag Meaning   : {', '.join(flag_desc) if flag_desc else 'None'}"
+                )
+            except (AttributeError, IndexError):
+                print("\nProtocol: TCP (malformed)")
 
         elif UDP in packet:
-            udp = packet[UDP]
-            print(f"\nProtocol: UDP")
-            print(f"   Source Port    : {udp.sport}")
-            print(f"   Destination Port: {udp.dport}")
+            try:
+                udp = packet[UDP]
+                print("\nProtocol: UDP")
+                print(f"   Source Port    : {udp.sport}")
+                print(f"   Destination Port: {udp.dport}")
+            except (AttributeError, IndexError):
+                print("\nProtocol: UDP (malformed)")
 
         else:
             print("\nProtocol: Other")
@@ -224,25 +231,36 @@ def alert(packet, features, score):
         print("   - Slight deviation from baseline")
 
     if packet:
-        if (
-            TCP in packet
-            and packet[TCP].flags & 0x02
-            and not (packet[TCP].flags & 0x10)
-        ):
-            print("   - Possible SYN scan or connection attempt")
+        try:
+            if (
+                TCP in packet
+                and packet[TCP].flags & 0x02
+                and not (packet[TCP].flags & 0x10)
+            ):
+                print("   - Possible SYN scan or connection attempt")
+        except (AttributeError, IndexError):
+            pass
 
         if len(packet) > 1400:
             print("   - Large packet (possible data transfer / streaming)")
 
-        if UDP in packet and packet[UDP].dport > 10000:
-            print("   - High UDP port (common in P2P or custom protocols)")
+        try:
+            if UDP in packet and packet[UDP].dport > 10000:
+                print("   - High UDP port (common in P2P or custom protocols)")
+        except (AttributeError, IndexError):
+            pass
 
     print("=" * 60 + "\n")
 
     # Save to log
     with open("alerts.log", "a") as f:
+        summary_str = "N/A"
+        try:
+            summary_str = packet.summary() if packet else "N/A"
+        except Exception:
+            pass
         f.write(
-            f"{time.ctime()} | Score: {score:.4f} | {packet.summary() if packet else 'N/A'}\n"
+            f"{time.ctime()} | Score: {score:.4f} | {summary_str}\n"
         )
 
 
@@ -258,7 +276,10 @@ def process_packet(packet):
 
     if scan_result:
         print(f"\n SCAN DETECTED: {scan_result}", flush=True)
-        print(packet.summary())
+        try:
+            print(packet.summary())
+        except Exception:
+            pass
 
     features = extract_features(packet)
     if features is None:
