@@ -35,36 +35,46 @@ scan_tracker = defaultdict(
 )
 
 
+# Check if packet is routine multicast or broadcast noise
 def is_noise(packet):
     # Ignore multicast / IGMP
     if packet.haslayer("IGMP"):
         return True
 
     if IP in packet:
-        dst = packet[IP].dst
+        try:
+            dst = packet[IP].dst
+        except (AttributeError, IndexError):
+            return True
 
         # Multicast range
         if dst.startswith("224."):
             return True
 
     if IPv6 in packet:
-        dst = packet[IPv6].dst
+        try:
+            dst = packet[IPv6].dst
+        except (AttributeError, IndexError):
+            return True
 
-        # IPv6 multicast range (ff00::/8): mDNS, router/neighbor discovery
-        # and similar routine chatter that every dual-stack host sends
-        # constantly, and which is just as much noise as IPv4 224.0.0.0/4.
+        # IPv6 multicast range (ff00::/8)
         if dst.lower().startswith("ff"):
             return True
 
     return False
 
 
+# Track connection patterns to spot network scans
 def detect_scan(packet):
     if IP not in packet:
         return False
 
-    src = packet[IP].src
-    dst = packet[IP].dst
+    try:
+        src = packet[IP].src
+        dst = packet[IP].dst
+    except (AttributeError, IndexError):
+        return False
+
     now = time.time()
 
     tracker = scan_tracker[src]
@@ -73,9 +83,7 @@ def detect_scan(packet):
     while tracker["timestamps"] and now - tracker["timestamps"][0] > 10:
         tracker["timestamps"].popleft()
 
-    # Once the window has fully drained, this source has been quiet for the
-    # last 10 seconds: reset its counters instead of leaving a burst from
-    # long ago permanently flagging every packet it sends from now on.
+    # Once the window has fully drained, reset counters
     if not tracker["timestamps"]:
         tracker["ports"].clear()
         tracker["syn_packets"] = 0
@@ -120,6 +128,7 @@ def detect_scan(packet):
     return False
 
 
+# Convert raw packet into numerical features for the model
 def extract_features(packet):
     try:
         if IP in packet:
@@ -150,6 +159,8 @@ def extract_features(packet):
     except (AttributeError, IndexError):
         return None
 
+    return None
+
 
 # Train model
 def train_model():
@@ -177,11 +188,14 @@ def alert(packet, features, score):
     print(f"Features: {features}")
 
     if packet and IP in packet:
-        ip = packet[IP]
-        print("\nNetwork Info:")
-        print(f"   Source IP      : {ip.src}")
-        print(f"   Destination IP : {ip.dst}")
-        print(f"   Packet Length  : {len(packet)} bytes")
+        try:
+            ip = packet[IP]
+            print("\nNetwork Info:")
+            print(f"   Source IP      : {ip.src}")
+            print(f"   Destination IP : {ip.dst}")
+            print(f"   Packet Length  : {len(packet)} bytes")
+        except (AttributeError, IndexError):
+            pass
 
         if TCP in packet:
             try:
@@ -241,8 +255,11 @@ def alert(packet, features, score):
         except (AttributeError, IndexError):
             pass
 
-        if len(packet) > 1400:
-            print("   - Large packet (possible data transfer / streaming)")
+        try:
+            if len(packet) > 1400:
+                print("   - Large packet (possible data transfer / streaming)")
+        except (AttributeError, TypeError):
+            pass
 
         try:
             if UDP in packet and packet[UDP].dport > 10000:
